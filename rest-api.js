@@ -346,5 +346,77 @@ export const apiRouter = (db) => {
         }
     });
 
+    /**
+     * GET /api/feed/:userId
+     * Endpoint to get a random available listing from other users for the feed.
+     * Excludes the current user's own listings.
+     */
+    router.get('/feed/:userId', async (req, res) => {
+        const { userId } = req.params;
+
+        try {
+            // Get a random listing that's not from the current user and is available
+            const listing = await db.db.get(
+                `SELECT l.*, u.firstname as owner_firstname 
+                 FROM listings l
+                 JOIN users u ON l.user_id = u.id
+                 WHERE l.user_id != ? 
+                 AND l.listing_status = 'available'
+                 ORDER BY RANDOM()
+                 LIMIT 1`,
+                [userId]
+            );
+
+            if (!listing) {
+                return res.status(404).json({
+                    error: 'No listings available',
+                    message: 'No listings found in the feed at this time.'
+                });
+            }
+
+            // Parse the pictures JSON
+            const pictures = JSON.parse(listing.pictures || '[]');
+            
+            // Parse colour field - could be comma-separated
+            const colours = listing.colour ? listing.colour.split(',').map(c => c.trim()) : [];
+            
+            // Parse article tags - could be comma-separated
+            const clothingTags = listing.article_tags ? listing.article_tags.split(',').map(t => t.trim()) : [];
+            
+            // Parse style tags if present
+            const styleTags = listing.style_tags ? listing.style_tags.split(',').map(t => t.trim()) : [];
+
+            // Format the response
+            const formattedListing = {
+                id: listing.id,
+                ownerId: listing.user_id,
+                ownerName: listing.owner_firstname,
+                listingName: listing.listing_name,
+                mainPhoto: pictures[0] || '',
+                additionalPhotos: pictures.slice(1),
+                size: listing.sizing_tags,
+                gender: listing.gender_of_sizing,
+                location: listing.location || 'Not specified',
+                brand: listing.brand || 'Not specified',
+                quality: listing.condition,
+                colours: colours,
+                clothingTags: clothingTags,
+                styleTags: styleTags,
+                details: listing.listing_description || 'No description provided',
+                lookingFor: listing.trade_preferences || 'Open to offers',
+                createdAt: listing.created_at
+            };
+
+            res.status(200).json(formattedListing);
+
+        } catch (error) {
+            console.error('Feed fetch error:', error);
+            res.status(500).json({
+                error: 'Internal Server Error',
+                details: error.message
+            });
+        }
+    });
+
     return router;
 };
