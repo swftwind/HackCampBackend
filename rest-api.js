@@ -680,23 +680,7 @@ export const apiRouter = (db) => {
                 );
 
                 // Calculate timestamp
-                let timestamp = 'New match';
-                if (lastMessage) {
-                    const messageDate = new Date(lastMessage.created_at);
-                    const now = new Date();
-                    const diffMs = now - messageDate;
-                    const diffMins = Math.floor(diffMs / 60000);
-                    const diffHours = Math.floor(diffMs / 3600000);
-                    const diffDays = Math.floor(diffMs / 86400000);
-
-                    if (diffMins < 60) {
-                        timestamp = `${diffMins}m ago`;
-                    } else if (diffHours < 24) {
-                        timestamp = `${diffHours}h ago`;
-                    } else {
-                        timestamp = `${diffDays}d ago`;
-                    }
-                }
+                let timestamp = '1m ago';
 
                 return {
                     id: match.match_id,
