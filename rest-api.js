@@ -1,4 +1,5 @@
 import express from 'express';
+import bcrypt from 'bcryptjs';
 
 /**
  * Creates and returns the Express router for the API.
@@ -46,6 +47,21 @@ export const apiRouter = (db) => {
         next();
     };
 
+    // Middleware to validate login request
+    const validateLogin = (req, res, next) => {
+        const { email, password } = req.body;
+        
+        // Check for required fields
+        if (!email || !password) {
+            return res.status(400).json({ 
+                error: 'Missing fields',
+                message: 'Email and password are required.'
+            });
+        }
+        
+        next();
+    };
+
     /**
      * POST /api/register
      * Endpoint for user registration.
@@ -75,6 +91,52 @@ export const apiRouter = (db) => {
 
         } catch (error) {
             console.error('Registration error:', error);
+            res.status(500).json({ error: 'Internal Server Error', details: error.message });
+        }
+    });
+
+    /**
+     * POST /api/login
+     * Endpoint for user login/authentication.
+     */
+    router.post('/login', validateLogin, async (req, res) => {
+        const { email, password } = req.body;
+        
+        try {
+            // 1. Find user by email and get the password hash
+            const user = await db.db.get(
+                'SELECT id, email, password_hash, firstname FROM users WHERE email = ?', 
+                [email]
+            );
+
+            // 2. Check if user exists
+            if (!user) {
+                return res.status(401).json({ 
+                    error: 'Authentication failed',
+                    message: 'Invalid email or password.' 
+                });
+            }
+
+            // 3. Verify password using bcrypt to compare with hash
+            const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+            
+            if (!isPasswordValid) {
+                return res.status(401).json({ 
+                    error: 'Authentication failed',
+                    message: 'Invalid email or password.' 
+                });
+            }
+
+            // 4. Successful login - return user data (excluding password hash)
+            res.status(200).json({ 
+                message: 'Login successful!',
+                userId: user.id,
+                email: user.email,
+                firstname: user.firstname
+            });
+
+        } catch (error) {
+            console.error('Login error:', error);
             res.status(500).json({ error: 'Internal Server Error', details: error.message });
         }
     });
