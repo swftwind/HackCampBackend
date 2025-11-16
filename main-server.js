@@ -22,8 +22,9 @@ const main = async () => {
     // Enable CORS for frontend requests (Adjust origin in production)
     app.use(cors({ origin: '*' })); 
 
-    // Middleware to parse JSON bodies (for POST requests)
-    app.use(express.json());
+    // Middleware to parse JSON bodies with increased limit for base64 images
+    app.use(express.json({ limit: '50mb' }));
+    app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
     // Middleware to log incoming requests (helpful for debugging)
     app.use((req, res, next) => {

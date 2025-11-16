@@ -277,5 +277,74 @@ export const apiRouter = (db) => {
         }
     });
 
+    /**
+     * GET /api/profile/:userId
+     * Endpoint to get full user profile with listings.
+     */
+    router.get('/profile/:userId', async (req, res) => {
+        const { userId } = req.params;
+
+        try {
+            // Get user data
+            const user = await db.db.get(
+                'SELECT id, email, firstname, birthday, data, created_at FROM users WHERE id = ?',
+                [userId]
+            );
+
+            if (!user) {
+                return res.status(404).json({
+                    error: 'User not found',
+                    message: 'The specified user does not exist.'
+                });
+            }
+
+            // Parse user profile data
+            const profileData = JSON.parse(user.data || '{}');
+
+            // Get all user listings
+            const listings = await db.db.all(
+                'SELECT * FROM listings WHERE user_id = ? ORDER BY created_at DESC',
+                [userId]
+            );
+
+            // Parse pictures for each listing
+            const parsedListings = listings.map(listing => ({
+                id: listing.id,
+                name: listing.listing_name,
+                size: listing.sizing_tags,
+                image: JSON.parse(listing.pictures || '[]')[0], // First image
+                status: listing.listing_status,
+                allData: {
+                    ...listing,
+                    pictures: JSON.parse(listing.pictures || '[]')
+                }
+            }));
+
+            // Return complete profile
+            res.status(200).json({
+                userId: user.id,
+                firstName: user.firstname,
+                email: user.email,
+                birthday: user.birthday,
+                location: profileData.preferredMeetingLocation || 'Not specified',
+                preferredMeetup: profileData.preferredMeetingLocation || 'Not specified',
+                bio: profileData.bio || '',
+                sizing: profileData.sizing || [],
+                style: profileData.style || [],
+                profileImage: profileData.profileImage || '',
+                coverImage: profileData.coverImage || '',
+                listings: parsedListings,
+                listingCount: parsedListings.length
+            });
+
+        } catch (error) {
+            console.error('Profile fetch error:', error);
+            res.status(500).json({
+                error: 'Internal Server Error',
+                details: error.message
+            });
+        }
+    });
+
     return router;
 };
