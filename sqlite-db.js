@@ -78,7 +78,42 @@ export class Database {
             )
         `);
 
-        console.log('Database initialized. Tables: "users", "listings", and "likes" ensured.');
+        // --- MATCHES TABLE ---
+        await this.db.run(`
+            CREATE TABLE IF NOT EXISTS matches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user1_id INTEGER NOT NULL,
+                user2_id INTEGER NOT NULL,
+                user1_listing_id INTEGER NOT NULL,
+                user2_listing_id INTEGER NOT NULL,
+                like_id INTEGER NOT NULL,
+                status TEXT DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user1_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (user2_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (user1_listing_id) REFERENCES listings(id) ON DELETE CASCADE,
+                FOREIGN KEY (user2_listing_id) REFERENCES listings(id) ON DELETE CASCADE,
+                FOREIGN KEY (like_id) REFERENCES likes(id) ON DELETE CASCADE
+            )
+        `);
+
+        // --- MESSAGES TABLE ---
+        await this.db.run(`
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                match_id INTEGER NOT NULL,
+                sender_id INTEGER NOT NULL,
+                message_type TEXT DEFAULT 'text',
+                message_content TEXT NOT NULL,
+                image_url TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                read_at TIMESTAMP,
+                FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE,
+                FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        `);
+
+        console.log('Database initialized. Tables: "users", "listings", "likes", "matches", and "messages" ensured.');
     }
 
     /**

@@ -12,7 +12,6 @@ export const apiRouter = (db) => {
     const validateRegistration = (req, res, next) => {
         const { email, password, firstname, birthday } = req.body;
         
-        // Check for required fields
         if (!email || !password || !firstname) {
             return res.status(400).json({ 
                 error: 'Missing fields',
@@ -20,7 +19,6 @@ export const apiRouter = (db) => {
             });
         }
         
-        // Basic Email validation
         if (!email.includes('@') || !email.includes('.')) {
             return res.status(400).json({ 
                 error: 'Invalid email',
@@ -28,7 +26,6 @@ export const apiRouter = (db) => {
             });
         }
 
-        // Password length validation
         if (password.length < 8) {
             return res.status(400).json({ 
                 error: 'Invalid password',
@@ -36,7 +33,6 @@ export const apiRouter = (db) => {
             });
         }
 
-        // Basic Birthday validation (ensure YYYY-MM-DD format if provided)
         if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
              return res.status(400).json({ 
                 error: 'Invalid date format',
@@ -47,11 +43,9 @@ export const apiRouter = (db) => {
         next();
     };
 
-    // Middleware to validate login request
     const validateLogin = (req, res, next) => {
         const { email, password } = req.body;
         
-        // Check for required fields
         if (!email || !password) {
             return res.status(400).json({ 
                 error: 'Missing fields',
@@ -64,26 +58,19 @@ export const apiRouter = (db) => {
 
     /**
      * POST /api/register
-     * Endpoint for user registration.
      */
     router.post('/register', validateRegistration, async (req, res) => {
-        // Destructure all expected fields
         const { email, password, firstname, birthday, preferredMeetingLocation } = req.body;
-        
-        // Compile data object to pass to the DB layer
         const userData = { email, password, firstname, birthday, preferredMeetingLocation };
         
         try {
-            // 1. Check if email already exists
             const existingUser = await db.db.get('SELECT id FROM users WHERE email = ?', [email]);
             if (existingUser) {
                 return res.status(409).json({ error: 'Conflict', message: 'Email address already registered.' });
             }
 
-            // 2. Process and store the new user
             const result = await db.createUser(userData);
 
-            // 3. Respond to the frontend
             res.status(201).json({ 
                 message: 'User registered successfully!', 
                 userId: result.userId
@@ -97,19 +84,16 @@ export const apiRouter = (db) => {
 
     /**
      * POST /api/login
-     * Endpoint for user login/authentication.
      */
     router.post('/login', validateLogin, async (req, res) => {
         const { email, password } = req.body;
         
         try {
-            // 1. Find user by email and get the password hash
             const user = await db.db.get(
                 'SELECT id, email, password_hash, firstname FROM users WHERE email = ?', 
                 [email]
             );
 
-            // 2. Check if user exists
             if (!user) {
                 return res.status(401).json({ 
                     error: 'Authentication failed',
@@ -117,7 +101,6 @@ export const apiRouter = (db) => {
                 });
             }
 
-            // 3. Verify password using bcrypt to compare with hash
             const isPasswordValid = await bcrypt.compare(password, user.password_hash);
             
             if (!isPasswordValid) {
@@ -127,7 +110,6 @@ export const apiRouter = (db) => {
                 });
             }
 
-            // 4. Successful login - return user data (excluding password hash)
             res.status(200).json({ 
                 message: 'Login successful!',
                 userId: user.id,
@@ -143,26 +125,14 @@ export const apiRouter = (db) => {
 
     /**
      * POST /api/listings
-     * Endpoint for creating a new listing.
      */
     router.post('/listings', async (req, res) => {
         const {
-            userId,
-            listingName,
-            listingDescription,
-            tradePreferences,
-            sizingTags,
-            genderOfSizing,
-            brand,
-            condition,
-            colour,
-            articleTags,
-            styleTags,
-            pictures,
-            listingStatus
+            userId, listingName, listingDescription, tradePreferences,
+            sizingTags, genderOfSizing, brand, condition, colour,
+            articleTags, styleTags, pictures, listingStatus
         } = req.body;
 
-        // Validate required fields
         if (!userId || !listingName || !sizingTags || !genderOfSizing || !condition || !articleTags) {
             return res.status(400).json({
                 error: 'Missing required fields',
@@ -170,7 +140,6 @@ export const apiRouter = (db) => {
             });
         }
 
-        // Validate pictures array
         if (!pictures || !Array.isArray(pictures) || pictures.length === 0) {
             return res.status(400).json({
                 error: 'Missing pictures',
@@ -179,7 +148,6 @@ export const apiRouter = (db) => {
         }
 
         try {
-            // Verify user exists
             const user = await db.db.get('SELECT id FROM users WHERE id = ?', [userId]);
             if (!user) {
                 return res.status(404).json({
@@ -188,45 +156,20 @@ export const apiRouter = (db) => {
                 });
             }
 
-            // Get user's location from their profile
             const userData = await db.db.get('SELECT data FROM users WHERE id = ?', [userId]);
             const userProfile = JSON.parse(userData.data || '{}');
             const location = userProfile.preferredMeetingLocation || 'Not specified';
 
-            // Insert listing into database
             const result = await db.db.run(
                 `INSERT INTO listings (
-                    user_id, 
-                    listing_name, 
-                    listing_description, 
-                    trade_preferences,
-                    sizing_tags,
-                    gender_of_sizing,
-                    location,
-                    brand,
-                    condition,
-                    colour,
-                    article_tags,
-                    style_tags,
-                    pictures,
-                    listing_status,
-                    created_at
+                    user_id, listing_name, listing_description, trade_preferences,
+                    sizing_tags, gender_of_sizing, location, brand, condition, colour,
+                    article_tags, style_tags, pictures, listing_status, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
                 [
-                    userId,
-                    listingName,
-                    listingDescription || null,
-                    tradePreferences || null,
-                    sizingTags,
-                    genderOfSizing,
-                    location,
-                    brand || null,
-                    condition,
-                    colour || null,
-                    articleTags,
-                    styleTags || null,
-                    JSON.stringify(pictures),
-                    listingStatus || 'available'
+                    userId, listingName, listingDescription || null, tradePreferences || null,
+                    sizingTags, genderOfSizing, location, brand || null, condition, colour || null,
+                    articleTags, styleTags || null, JSON.stringify(pictures), listingStatus || 'available'
                 ]
             );
 
@@ -246,7 +189,6 @@ export const apiRouter = (db) => {
 
     /**
      * GET /api/listings/user/:userId
-     * Endpoint to get all listings for a specific user.
      */
     router.get('/listings/user/:userId', async (req, res) => {
         const { userId } = req.params;
@@ -257,7 +199,6 @@ export const apiRouter = (db) => {
                 [userId, 'available']
             );
 
-            // Parse pictures JSON for each listing
             const parsedListings = listings.map(listing => ({
                 id: listing.id,
                 name: listing.listing_name,
@@ -282,13 +223,11 @@ export const apiRouter = (db) => {
 
     /**
      * GET /api/profile/:userId
-     * Endpoint to get full user profile with listings.
      */
     router.get('/profile/:userId', async (req, res) => {
         const { userId } = req.params;
 
         try {
-            // Get user data
             const user = await db.db.get(
                 'SELECT id, email, firstname, birthday, data, created_at FROM users WHERE id = ?',
                 [userId]
@@ -301,16 +240,13 @@ export const apiRouter = (db) => {
                 });
             }
 
-            // Parse user profile data
             const profileData = JSON.parse(user.data || '{}');
 
-            // Get all user listings
             const listings = await db.db.all(
                 'SELECT * FROM listings WHERE user_id = ? ORDER BY created_at DESC',
                 [userId]
             );
 
-            // Parse pictures for each listing
             const parsedListings = listings.map(listing => ({
                 id: listing.id,
                 name: listing.listing_name,
@@ -323,7 +259,6 @@ export const apiRouter = (db) => {
                 }
             }));
 
-            // Return complete profile
             res.status(200).json({
                 userId: user.id,
                 firstName: user.firstname,
@@ -351,7 +286,6 @@ export const apiRouter = (db) => {
 
     /**
      * GET /api/feed/:userId
-     * Endpoint to get a random available listing from other users for the feed.
      */
     router.get('/feed/:userId', async (req, res) => {
         const { userId } = req.params;
@@ -413,7 +347,6 @@ export const apiRouter = (db) => {
 
     /**
      * POST /api/likes
-     * Endpoint to send a like/swap offer with selected items.
      */
     router.post('/likes', async (req, res) => {
         const { likerUserId, targetListingId, offeredListingIds, message } = req.body;
@@ -472,20 +405,12 @@ export const apiRouter = (db) => {
 
             const result = await db.db.run(
                 `INSERT INTO likes (
-                    liker_user_id,
-                    owner_user_id,
-                    target_listing_id,
-                    offered_listing_ids,
-                    message,
-                    status,
-                    created_at
+                    liker_user_id, owner_user_id, target_listing_id,
+                    offered_listing_ids, message, status, created_at
                 ) VALUES (?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP)`,
                 [
-                    likerUserId,
-                    targetListing.user_id,
-                    targetListingId,
-                    JSON.stringify(offeredListingIds),
-                    message || null
+                    likerUserId, targetListing.user_id, targetListingId,
+                    JSON.stringify(offeredListingIds), message || null
                 ]
             );
 
@@ -505,7 +430,6 @@ export const apiRouter = (db) => {
 
     /**
      * GET /api/likes/received/:userId
-     * Endpoint to get all likes received by a user on their listings.
      */
     router.get('/likes/received/:userId', async (req, res) => {
         const { userId } = req.params;
@@ -513,26 +437,13 @@ export const apiRouter = (db) => {
         try {
             const likes = await db.db.all(
                 `SELECT 
-                    l.id as like_id,
-                    l.liker_user_id,
-                    l.target_listing_id,
-                    l.offered_listing_ids,
-                    l.message,
-                    l.status,
-                    l.created_at,
-                    u.firstname as liker_name,
-                    u.data as liker_data,
-                    tl.listing_name as target_listing_name,
-                    tl.pictures as target_listing_pictures,
-                    tl.sizing_tags,
-                    tl.gender_of_sizing,
-                    tl.location,
-                    tl.brand,
-                    tl.condition,
-                    tl.colour,
-                    tl.article_tags,
-                    tl.listing_description,
-                    tl.trade_preferences
+                    l.id as like_id, l.liker_user_id, l.target_listing_id,
+                    l.offered_listing_ids, l.message, l.status, l.created_at,
+                    u.firstname as liker_name, u.data as liker_data,
+                    tl.listing_name as target_listing_name, tl.pictures as target_listing_pictures,
+                    tl.sizing_tags, tl.gender_of_sizing, tl.location, tl.brand,
+                    tl.condition, tl.colour, tl.article_tags,
+                    tl.listing_description, tl.trade_preferences
                 FROM likes l
                 JOIN users u ON l.liker_user_id = u.id
                 JOIN listings tl ON l.target_listing_id = tl.id
@@ -567,6 +478,7 @@ export const apiRouter = (db) => {
                 return {
                     id: like.like_id,
                     likerUserId: like.liker_user_id,
+                    targetListingId: like.target_listing_id,
                     userName: like.liker_name,
                     profileImage: likerProfile.profileImage || '',
                     coverImage: targetPictures[0] || '',
@@ -606,24 +518,76 @@ export const apiRouter = (db) => {
     });
 
     /**
-     * PUT /api/likes/:likeId/status
-     * Endpoint to update the status of a like (accept/ignore).
+     * PUT /api/likes/:likeId/accept
+     * Accept a like and create a match
      */
-    router.put('/likes/:likeId/status', async (req, res) => {
+    router.put('/likes/:likeId/accept', async (req, res) => {
         const { likeId } = req.params;
-        const { status } = req.body;
 
-        if (!status || !['accepted', 'ignored'].includes(status)) {
-            return res.status(400).json({
-                error: 'Invalid status',
-                message: 'Status must be either "accepted" or "ignored".'
+        try {
+            const like = await db.db.get(
+                `SELECT l.*, tl.user_id as owner_id
+                 FROM likes l
+                 JOIN listings tl ON l.target_listing_id = tl.id
+                 WHERE l.id = ? AND l.status = 'pending'`,
+                [likeId]
+            );
+
+            if (!like) {
+                return res.status(404).json({
+                    error: 'Like not found',
+                    message: 'The specified like does not exist or has already been processed.'
+                });
+            }
+
+            const offeredListingIds = JSON.parse(like.offered_listing_ids);
+            const primaryOfferedListing = offeredListingIds[0];
+
+            // Create match entry
+            const matchResult = await db.db.run(
+                `INSERT INTO matches (
+                    user1_id, user2_id, user1_listing_id, user2_listing_id,
+                    like_id, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP)`,
+                [
+                    like.owner_user_id,
+                    like.liker_user_id,
+                    like.target_listing_id,
+                    primaryOfferedListing,
+                    like.id
+                ]
+            );
+
+            // Update like status
+            await db.db.run(
+                'UPDATE likes SET status = ? WHERE id = ?',
+                ['accepted', likeId]
+            );
+
+            res.status(200).json({
+                message: 'Match created successfully!',
+                matchId: matchResult.lastID
+            });
+
+        } catch (error) {
+            console.error('Accept like error:', error);
+            res.status(500).json({
+                error: 'Internal Server Error',
+                details: error.message
             });
         }
+    });
+
+    /**
+     * PUT /api/likes/:likeId/ignore
+     */
+    router.put('/likes/:likeId/ignore', async (req, res) => {
+        const { likeId } = req.params;
 
         try {
             const result = await db.db.run(
                 'UPDATE likes SET status = ? WHERE id = ?',
-                [status, likeId]
+                ['ignored', likeId]
             );
 
             if (result.changes === 0) {
@@ -634,11 +598,207 @@ export const apiRouter = (db) => {
             }
 
             res.status(200).json({
-                message: `Like ${status} successfully!`
+                message: 'Like ignored successfully!'
             });
 
         } catch (error) {
-            console.error('Update like status error:', error);
+            console.error('Ignore like error:', error);
+            res.status(500).json({
+                error: 'Internal Server Error',
+                details: error.message
+            });
+        }
+    });
+
+    /**
+     * GET /api/matches/:userId
+     */
+    router.get('/matches/:userId', async (req, res) => {
+        const { userId } = req.params;
+
+        try {
+            const matches = await db.db.all(
+                `SELECT 
+                    m.id as match_id,
+                    m.user1_id, m.user2_id,
+                    m.user1_listing_id, m.user2_listing_id,
+                    m.created_at,
+                    u1.firstname as user1_name, u1.data as user1_data,
+                    u2.firstname as user2_name, u2.data as user2_data,
+                    l1.listing_name as user1_listing_name,
+                    l1.pictures as user1_listing_pictures,
+                    l1.sizing_tags as user1_listing_size,
+                    l2.listing_name as user2_listing_name,
+                    l2.pictures as user2_listing_pictures,
+                    l2.sizing_tags as user2_listing_size
+                FROM matches m
+                JOIN users u1 ON m.user1_id = u1.id
+                JOIN users u2 ON m.user2_id = u2.id
+                JOIN listings l1 ON m.user1_listing_id = l1.id
+                JOIN listings l2 ON m.user2_listing_id = l2.id
+                WHERE (m.user1_id = ? OR m.user2_id = ?) AND m.status = 'active'
+                ORDER BY m.created_at DESC`,
+                [userId, userId]
+            );
+
+            if (matches.length === 0) {
+                return res.status(200).json({
+                    matches: [],
+                    count: 0
+                });
+            }
+
+            const formattedMatches = await Promise.all(matches.map(async (match) => {
+                const isUser1 = match.user1_id === parseInt(userId);
+                const otherUserId = isUser1 ? match.user2_id : match.user1_id;
+                const otherUserName = isUser1 ? match.user2_name : match.user1_name;
+                const otherUserData = JSON.parse(isUser1 ? match.user2_data : match.user1_data);
+                const otherUserListingName = isUser1 ? match.user2_listing_name : match.user1_listing_name;
+                const otherUserListingPictures = JSON.parse(isUser1 ? match.user2_listing_pictures : match.user1_listing_pictures);
+                const otherUserListingSize = isUser1 ? match.user2_listing_size : match.user1_listing_size;
+                
+                const myListingName = isUser1 ? match.user1_listing_name : match.user2_listing_name;
+                const myListingPictures = JSON.parse(isUser1 ? match.user1_listing_pictures : match.user2_listing_pictures);
+                const myListingSize = isUser1 ? match.user1_listing_size : match.user2_listing_size;
+
+                // Get last message
+                const lastMessage = await db.db.get(
+                    `SELECT message_content, sender_id, created_at
+                     FROM messages
+                     WHERE match_id = ?
+                     ORDER BY created_at DESC
+                     LIMIT 1`,
+                    [match.match_id]
+                );
+
+                // Get unread count
+                const unreadCount = await db.db.get(
+                    `SELECT COUNT(*) as count
+                     FROM messages
+                     WHERE match_id = ? AND sender_id = ? AND read_at IS NULL`,
+                    [match.match_id, otherUserId]
+                );
+
+                // Calculate timestamp
+                let timestamp = 'New match';
+                if (lastMessage) {
+                    const messageDate = new Date(lastMessage.created_at);
+                    const now = new Date();
+                    const diffMs = now - messageDate;
+                    const diffMins = Math.floor(diffMs / 60000);
+                    const diffHours = Math.floor(diffMs / 3600000);
+                    const diffDays = Math.floor(diffMs / 86400000);
+
+                    if (diffMins < 60) {
+                        timestamp = `${diffMins}m ago`;
+                    } else if (diffHours < 24) {
+                        timestamp = `${diffHours}h ago`;
+                    } else {
+                        timestamp = `${diffDays}d ago`;
+                    }
+                }
+
+                return {
+                    id: match.match_id,
+                    itemImage: otherUserListingPictures[0] || '',
+                    itemTitle: otherUserListingName,
+                    size: otherUserListingSize,
+                    userName: otherUserName,
+                    userAvatar: otherUserData.profileImage || '',
+                    lastMessage: lastMessage ? lastMessage.message_content : 'Start a conversation',
+                    timestamp: timestamp,
+                    unread: unreadCount.count > 0,
+                    myListing: {
+                        itemImage: myListingPictures[0] || '',
+                        itemTitle: myListingName,
+                        size: myListingSize
+                    }
+                };
+            }));
+
+            res.status(200).json({
+                matches: formattedMatches,
+                count: formattedMatches.length
+            });
+
+        } catch (error) {
+            console.error('Fetch matches error:', error);
+            res.status(500).json({
+                error: 'Internal Server Error',
+                details: error.message
+            });
+        }
+    });
+
+    /**
+     * GET /api/matches/:matchId/messages
+     */
+    router.get('/matches/:matchId/messages', async (req, res) => {
+        const { matchId } = req.params;
+
+        try {
+            const messages = await db.db.all(
+                `SELECT m.*, u.firstname as sender_name
+                 FROM messages m
+                 JOIN users u ON m.sender_id = u.id
+                 WHERE m.match_id = ?
+                 ORDER BY m.created_at ASC`,
+                [matchId]
+            );
+
+            const formattedMessages = messages.map(msg => ({
+                id: msg.id,
+                sender: msg.sender_id,
+                type: msg.message_type,
+                text: msg.message_content,
+                image: msg.image_url,
+                timestamp: msg.created_at,
+                status: msg.read_at ? 'Read' : 'Sent'
+            }));
+
+            res.status(200).json({
+                messages: formattedMessages
+            });
+
+        } catch (error) {
+            console.error('Fetch messages error:', error);
+            res.status(500).json({
+                error: 'Internal Server Error',
+                details: error.message
+            });
+        }
+    });
+
+    /**
+     * POST /api/matches/:matchId/messages
+     */
+    router.post('/matches/:matchId/messages', async (req, res) => {
+        const { matchId } = req.params;
+        const { senderId, messageContent, messageType, imageUrl } = req.body;
+
+        if (!senderId || !messageContent) {
+            return res.status(400).json({
+                error: 'Missing required fields',
+                message: 'senderId and messageContent are required.'
+            });
+        }
+
+        try {
+            const result = await db.db.run(
+                `INSERT INTO messages (
+                    match_id, sender_id, message_type, message_content,
+                    image_url, created_at
+                ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                [matchId, senderId, messageType || 'text', messageContent, imageUrl || null]
+            );
+
+            res.status(201).json({
+                message: 'Message sent successfully!',
+                messageId: result.lastID
+            });
+
+        } catch (error) {
+            console.error('Send message error:', error);
             res.status(500).json({
                 error: 'Internal Server Error',
                 details: error.message
