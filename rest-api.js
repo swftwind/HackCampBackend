@@ -86,7 +86,7 @@ export const apiRouter = (db) => {
             // 3. Respond to the frontend
             res.status(201).json({ 
                 message: 'User registered successfully!', 
-                userId: result.userId // This is the auto-generated primary key (userid)
+                userId: result.userId
             });
 
         } catch (error) {
@@ -253,13 +253,16 @@ export const apiRouter = (db) => {
 
         try {
             const listings = await db.db.all(
-                'SELECT * FROM listings WHERE user_id = ? ORDER BY created_at DESC',
-                [userId]
+                'SELECT * FROM listings WHERE user_id = ? AND listing_status = ? ORDER BY created_at DESC',
+                [userId, 'available']
             );
 
             // Parse pictures JSON for each listing
             const parsedListings = listings.map(listing => ({
-                ...listing,
+                id: listing.id,
+                name: listing.listing_name,
+                image: JSON.parse(listing.pictures || '[]')[0] || '',
+                size: listing.sizing_tags,
                 pictures: JSON.parse(listing.pictures || '[]')
             }));
 
@@ -312,7 +315,7 @@ export const apiRouter = (db) => {
                 id: listing.id,
                 name: listing.listing_name,
                 size: listing.sizing_tags,
-                image: JSON.parse(listing.pictures || '[]')[0], // First image
+                image: JSON.parse(listing.pictures || '[]')[0],
                 status: listing.listing_status,
                 allData: {
                     ...listing,
@@ -349,13 +352,11 @@ export const apiRouter = (db) => {
     /**
      * GET /api/feed/:userId
      * Endpoint to get a random available listing from other users for the feed.
-     * Excludes the current user's own listings.
      */
     router.get('/feed/:userId', async (req, res) => {
         const { userId } = req.params;
 
         try {
-            // Get a random listing that's not from the current user and is available
             const listing = await db.db.get(
                 `SELECT l.*, u.firstname as owner_firstname 
                  FROM listings l
@@ -374,19 +375,11 @@ export const apiRouter = (db) => {
                 });
             }
 
-            // Parse the pictures JSON
             const pictures = JSON.parse(listing.pictures || '[]');
-            
-            // Parse colour field - could be comma-separated
             const colours = listing.colour ? listing.colour.split(',').map(c => c.trim()) : [];
-            
-            // Parse article tags - could be comma-separated
             const clothingTags = listing.article_tags ? listing.article_tags.split(',').map(t => t.trim()) : [];
-            
-            // Parse style tags if present
             const styleTags = listing.style_tags ? listing.style_tags.split(',').map(t => t.trim()) : [];
 
-            // Format the response
             const formattedListing = {
                 id: listing.id,
                 ownerId: listing.user_id,
@@ -411,6 +404,241 @@ export const apiRouter = (db) => {
 
         } catch (error) {
             console.error('Feed fetch error:', error);
+            res.status(500).json({
+                error: 'Internal Server Error',
+                details: error.message
+            });
+        }
+    });
+
+    /**
+     * POST /api/likes
+     * Endpoint to send a like/swap offer with selected items.
+     */
+    router.post('/likes', async (req, res) => {
+        const { likerUserId, targetListingId, offeredListingIds, message } = req.body;
+
+        if (!likerUserId || !targetListingId || !offeredListingIds || !Array.isArray(offeredListingIds)) {
+            return res.status(400).json({
+                error: 'Missing required fields',
+                message: 'likerUserId, targetListingId, and offeredListingIds (array) are required.'
+            });
+        }
+
+        if (offeredListingIds.length === 0) {
+            return res.status(400).json({
+                error: 'Invalid offer',
+                message: 'At least one item must be offered.'
+            });
+        }
+
+        try {
+            const targetListing = await db.db.get(
+                'SELECT id, user_id, listing_name FROM listings WHERE id = ?',
+                [targetListingId]
+            );
+
+            if (!targetListing) {
+                return res.status(404).json({
+                    error: 'Listing not found',
+                    message: 'The target listing does not exist.'
+                });
+            }
+
+            const placeholders = offeredListingIds.map(() => '?').join(',');
+            const offeredListings = await db.db.all(
+                `SELECT id FROM listings WHERE id IN (${placeholders}) AND user_id = ?`,
+                [...offeredListingIds, likerUserId]
+            );
+
+            if (offeredListings.length !== offeredListingIds.length) {
+                return res.status(400).json({
+                    error: 'Invalid listings',
+                    message: 'Some offered listings do not exist or do not belong to you.'
+                });
+            }
+
+            const existingLike = await db.db.get(
+                `SELECT id FROM likes WHERE liker_user_id = ? AND target_listing_id = ?`,
+                [likerUserId, targetListingId]
+            );
+
+            if (existingLike) {
+                return res.status(409).json({
+                    error: 'Like already exists',
+                    message: 'You have already liked this listing.'
+                });
+            }
+
+            const result = await db.db.run(
+                `INSERT INTO likes (
+                    liker_user_id,
+                    owner_user_id,
+                    target_listing_id,
+                    offered_listing_ids,
+                    message,
+                    status,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP)`,
+                [
+                    likerUserId,
+                    targetListing.user_id,
+                    targetListingId,
+                    JSON.stringify(offeredListingIds),
+                    message || null
+                ]
+            );
+
+            res.status(201).json({
+                message: 'Like sent successfully!',
+                likeId: result.lastID
+            });
+
+        } catch (error) {
+            console.error('Like creation error:', error);
+            res.status(500).json({
+                error: 'Internal Server Error',
+                details: error.message
+            });
+        }
+    });
+
+    /**
+     * GET /api/likes/received/:userId
+     * Endpoint to get all likes received by a user on their listings.
+     */
+    router.get('/likes/received/:userId', async (req, res) => {
+        const { userId } = req.params;
+
+        try {
+            const likes = await db.db.all(
+                `SELECT 
+                    l.id as like_id,
+                    l.liker_user_id,
+                    l.target_listing_id,
+                    l.offered_listing_ids,
+                    l.message,
+                    l.status,
+                    l.created_at,
+                    u.firstname as liker_name,
+                    u.data as liker_data,
+                    tl.listing_name as target_listing_name,
+                    tl.pictures as target_listing_pictures,
+                    tl.sizing_tags,
+                    tl.gender_of_sizing,
+                    tl.location,
+                    tl.brand,
+                    tl.condition,
+                    tl.colour,
+                    tl.article_tags,
+                    tl.listing_description,
+                    tl.trade_preferences
+                FROM likes l
+                JOIN users u ON l.liker_user_id = u.id
+                JOIN listings tl ON l.target_listing_id = tl.id
+                WHERE l.owner_user_id = ? AND l.status = 'pending'
+                ORDER BY l.created_at DESC`,
+                [userId]
+            );
+
+            if (likes.length === 0) {
+                return res.status(200).json({
+                    likes: [],
+                    count: 0
+                });
+            }
+
+            const formattedLikes = await Promise.all(likes.map(async (like) => {
+                const offeredIds = JSON.parse(like.offered_listing_ids || '[]');
+                
+                const placeholders = offeredIds.map(() => '?').join(',');
+                const offeredListings = offeredIds.length > 0 
+                    ? await db.db.all(
+                        `SELECT id, listing_name, pictures, sizing_tags FROM listings WHERE id IN (${placeholders})`,
+                        offeredIds
+                    )
+                    : [];
+
+                const likerProfile = JSON.parse(like.liker_data || '{}');
+                const targetPictures = JSON.parse(like.target_listing_pictures || '[]');
+                const colours = like.colour ? like.colour.split(',').map(c => c.trim()) : [];
+                const categories = like.article_tags ? like.article_tags.split(',').map(t => t.trim()) : [];
+
+                return {
+                    id: like.like_id,
+                    likerUserId: like.liker_user_id,
+                    userName: like.liker_name,
+                    profileImage: likerProfile.profileImage || '',
+                    coverImage: targetPictures[0] || '',
+                    title: like.target_listing_name,
+                    size: like.sizing_tags,
+                    brand: like.brand || 'Not specified',
+                    condition: like.condition,
+                    colors: colours,
+                    categories: categories,
+                    status: 'Active',
+                    details: like.listing_description || 'No description provided',
+                    lookingFor: like.trade_preferences || 'Open to offers',
+                    location: like.location || 'Not specified',
+                    message: like.message,
+                    offeredListings: offeredListings.map(ol => ({
+                        id: ol.id,
+                        name: ol.listing_name,
+                        image: JSON.parse(ol.pictures || '[]')[0] || '',
+                        size: ol.sizing_tags
+                    })),
+                    createdAt: like.created_at
+                };
+            }));
+
+            res.status(200).json({
+                likes: formattedLikes,
+                count: formattedLikes.length
+            });
+
+        } catch (error) {
+            console.error('Fetch received likes error:', error);
+            res.status(500).json({
+                error: 'Internal Server Error',
+                details: error.message
+            });
+        }
+    });
+
+    /**
+     * PUT /api/likes/:likeId/status
+     * Endpoint to update the status of a like (accept/ignore).
+     */
+    router.put('/likes/:likeId/status', async (req, res) => {
+        const { likeId } = req.params;
+        const { status } = req.body;
+
+        if (!status || !['accepted', 'ignored'].includes(status)) {
+            return res.status(400).json({
+                error: 'Invalid status',
+                message: 'Status must be either "accepted" or "ignored".'
+            });
+        }
+
+        try {
+            const result = await db.db.run(
+                'UPDATE likes SET status = ? WHERE id = ?',
+                [status, likeId]
+            );
+
+            if (result.changes === 0) {
+                return res.status(404).json({
+                    error: 'Like not found',
+                    message: 'The specified like does not exist.'
+                });
+            }
+
+            res.status(200).json({
+                message: `Like ${status} successfully!`
+            });
+
+        } catch (error) {
+            console.error('Update like status error:', error);
             res.status(500).json({
                 error: 'Internal Server Error',
                 details: error.message

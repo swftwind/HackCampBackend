@@ -61,7 +61,24 @@ export class Database {
             )
         `);
 
-        console.log('Database initialized. Tables: "users" and "listings" ensured.');
+        // --- LIKES TABLE ---
+        await this.db.run(`
+            CREATE TABLE IF NOT EXISTS likes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                liker_user_id INTEGER NOT NULL,
+                owner_user_id INTEGER NOT NULL,
+                target_listing_id INTEGER NOT NULL,
+                offered_listing_ids TEXT NOT NULL,
+                message TEXT,
+                status TEXT DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (liker_user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (target_listing_id) REFERENCES listings(id) ON DELETE CASCADE
+            )
+        `);
+
+        console.log('Database initialized. Tables: "users", "listings", and "likes" ensured.');
     }
 
     /**
