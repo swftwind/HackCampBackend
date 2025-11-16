@@ -806,5 +806,71 @@ export const apiRouter = (db) => {
         }
     });
 
+    /**
+     * PUT /api/matches/:matchId/complete
+     * Mark a match as complete
+     */
+    router.put('/matches/:matchId/complete', async (req, res) => {
+        const { matchId } = req.params;
+
+        try {
+            const result = await db.db.run(
+                'UPDATE matches SET status = ? WHERE id = ?',
+                ['completed', matchId]
+            );
+
+            if (result.changes === 0) {
+                return res.status(404).json({
+                    error: 'Match not found',
+                    message: 'The specified match does not exist.'
+                });
+            }
+
+            res.status(200).json({
+                message: 'Match marked as complete!'
+            });
+
+        } catch (error) {
+            console.error('Complete match error:', error);
+            res.status(500).json({
+                error: 'Internal Server Error',
+                details: error.message
+            });
+        }
+    });
+
+    /**
+     * PUT /api/matches/:matchId/cancel
+     * Cancel a match
+     */
+    router.put('/matches/:matchId/cancel', async (req, res) => {
+        const { matchId } = req.params;
+
+        try {
+            const result = await db.db.run(
+                'UPDATE matches SET status = ? WHERE id = ?',
+                ['cancelled', matchId]
+            );
+
+            if (result.changes === 0) {
+                return res.status(404).json({
+                    error: 'Match not found',
+                    message: 'The specified match does not exist.'
+                });
+            }
+
+            res.status(200).json({
+                message: 'Match cancelled successfully!'
+            });
+
+        } catch (error) {
+            console.error('Cancel match error:', error);
+            res.status(500).json({
+                error: 'Internal Server Error',
+                details: error.message
+            });
+        }
+    });
+
     return router;
 };
