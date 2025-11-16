@@ -7,21 +7,42 @@ import express from 'express';
 export const apiRouter = (db) => {
     const router = express.Router();
 
-    // Middleware to ensure all required fields are present
+    // Middleware to ensure all required fields are present and valid
     const validateRegistration = (req, res, next) => {
-        const { username, password } = req.body;
-        if (!username || !password) {
+        const { email, password, firstname, birthday } = req.body;
+        
+        // Check for required fields
+        if (!email || !password || !firstname) {
             return res.status(400).json({ 
                 error: 'Missing fields',
-                message: 'Username and password are required for registration.'
+                message: 'Email, password, and first name are required for registration.'
             });
         }
+        
+        // Basic Email validation
+        if (!email.includes('@') || !email.includes('.')) {
+            return res.status(400).json({ 
+                error: 'Invalid email',
+                message: 'Please provide a valid email address.'
+            });
+        }
+
+        // Password length validation
         if (password.length < 8) {
             return res.status(400).json({ 
                 error: 'Invalid password',
                 message: 'Password must be at least 8 characters long.'
             });
         }
+
+        // Basic Birthday validation (ensure YYYY-MM-DD format if provided)
+        if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
+             return res.status(400).json({ 
+                error: 'Invalid date format',
+                message: 'Birthday must be in YYYY-MM-DD format.'
+            });
+        }
+        
         next();
     };
 
@@ -30,27 +51,30 @@ export const apiRouter = (db) => {
      * Endpoint for user registration.
      */
     router.post('/register', validateRegistration, async (req, res) => {
-        const { username, password } = req.body;
+        // Destructure all expected fields
+        const { email, password, firstname, birthday, preferredMeetingLocation } = req.body;
+        
+        // Compile data object to pass to the DB layer
+        const userData = { email, password, firstname, birthday, preferredMeetingLocation };
         
         try {
-            // 1. Check if username already exists (Optional, but good practice. The UNIQUE constraint in SQL will also catch this.)
-            const existingUser = await db.db.get('SELECT id FROM users WHERE username = ?', [username]);
+            // 1. Check if email already exists
+            const existingUser = await db.db.get('SELECT id FROM users WHERE email = ?', [email]);
             if (existingUser) {
-                return res.status(409).json({ error: 'Conflict', message: 'Username already taken.' });
+                return res.status(409).json({ error: 'Conflict', message: 'Email address already registered.' });
             }
 
             // 2. Process and store the new user
-            const result = await db.createUser(username, password);
+            const result = await db.createUser(userData);
 
             // 3. Respond to the frontend
             res.status(201).json({ 
                 message: 'User registered successfully!', 
-                userId: result.userId 
+                userId: result.userId // This is the auto-generated primary key (userid)
             });
 
         } catch (error) {
             console.error('Registration error:', error);
-            // In a real app, you might check error type (e.g., SQL UNIQUE constraint violation)
             res.status(500).json({ error: 'Internal Server Error', details: error.message });
         }
     });

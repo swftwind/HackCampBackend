@@ -1,7 +1,7 @@
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import bcrypt from 'bcryptjs';
-import { AppSecrets } from './secrets.js';
+import { AppSecrets } from './secrets.js'; 
 
 // Configuration
 const DB_PATH = AppSecrets.DB_PATH;
@@ -18,25 +18,23 @@ export class Database {
      * Initializes the database connection and ensures the 'users' table exists.
      */
     async initialize() {
-        // Open the database
         this.db = await open({
             filename: DB_PATH,
             driver: sqlite3.Database
         });
 
-        // Use PRAGMA foreign_keys = ON; for relational integrity (optional but recommended)
         await this.db.run('PRAGMA foreign_keys = ON;');
         
-        // Define the Users Table Schema
-        // We use standard columns, not a single JSON blob, as is best practice.
-        // The 'data' column is provided in case the user wants to store complex JSON data.
+        // --- UPDATED TABLE SCHEMA ---
         await this.db.run(`
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL UNIQUE,
+                email TEXT NOT NULL UNIQUE,     -- New unique primary identifier
                 password_hash TEXT NOT NULL,
+                firstname TEXT NOT NULL,        -- New field
+                birthday TEXT,                  -- New field (Stored as TEXT 'YYYY-MM-DD')
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                data TEXT -- For storing arbitrary JSON data if required by the user
+                data TEXT                       -- Used for JSON data like preferredMeetingLocation
             )
         `);
 
@@ -45,31 +43,33 @@ export class Database {
 
     /**
      * Creates a new user in the database.
-     * @param {string} username - The user's chosen username.
-     * @param {string} password - The user's raw password (will be hashed).
+     * @param {object} userData - Object containing all user registration data.
      * @returns {object} The result of the database insertion.
      */
-    async createUser(username, password) {
+    async createUser(userData) {
         if (!this.db) {
             throw new Error('Database not initialized.');
         }
 
+        const { email, password, firstname, birthday, preferredMeetingLocation } = userData;
+
         // Generate a salt and hash the password
-        const salt = await bcrypt.genSalt(10);
+        const saltRounds = parseInt(AppSecrets.BCRYPT_SALT_ROUNDS, 10);
+        const salt = await bcrypt.genSalt(saltRounds);
         const passwordHash = await bcrypt.hash(password, salt);
 
-        // Prepare a basic user profile (to demonstrate JSON storage capability)
-        const userData = JSON.stringify({
-            firstLogin: true,
+        // Store the less structured data (location) as JSON in the 'data' column
+        const profileData = JSON.stringify({
+            preferredMeetingLocation: preferredMeetingLocation || 'Not specified',
             roles: ['user']
         });
 
         const result = await this.db.run(
-            `INSERT INTO users (username, password_hash, data) VALUES (?, ?, ?)`,
-            [username, passwordHash, userData]
+            `INSERT INTO users (email, password_hash, firstname, birthday, data) VALUES (?, ?, ?, ?, ?)`,
+            [email, passwordHash, firstname, birthday, profileData]
         );
 
-        // The 'lastID' is the ID of the new user, which is useful for the frontend.
+        // The 'lastID' is the generated user ID (userid).
         return { success: true, userId: result.lastID };
     }
 }
