@@ -141,5 +141,141 @@ export const apiRouter = (db) => {
         }
     });
 
+    /**
+     * POST /api/listings
+     * Endpoint for creating a new listing.
+     */
+    router.post('/listings', async (req, res) => {
+        const {
+            userId,
+            listingName,
+            listingDescription,
+            tradePreferences,
+            sizingTags,
+            genderOfSizing,
+            brand,
+            condition,
+            colour,
+            articleTags,
+            styleTags,
+            pictures,
+            listingStatus
+        } = req.body;
+
+        // Validate required fields
+        if (!userId || !listingName || !sizingTags || !genderOfSizing || !condition || !articleTags) {
+            return res.status(400).json({
+                error: 'Missing required fields',
+                message: 'userId, listingName, sizingTags, genderOfSizing, condition, and articleTags are required.'
+            });
+        }
+
+        // Validate pictures array
+        if (!pictures || !Array.isArray(pictures) || pictures.length === 0) {
+            return res.status(400).json({
+                error: 'Missing pictures',
+                message: 'At least one picture is required.'
+            });
+        }
+
+        try {
+            // Verify user exists
+            const user = await db.db.get('SELECT id FROM users WHERE id = ?', [userId]);
+            if (!user) {
+                return res.status(404).json({
+                    error: 'User not found',
+                    message: 'The specified user does not exist.'
+                });
+            }
+
+            // Get user's location from their profile
+            const userData = await db.db.get('SELECT data FROM users WHERE id = ?', [userId]);
+            const userProfile = JSON.parse(userData.data || '{}');
+            const location = userProfile.preferredMeetingLocation || 'Not specified';
+
+            // Insert listing into database
+            const result = await db.db.run(
+                `INSERT INTO listings (
+                    user_id, 
+                    listing_name, 
+                    listing_description, 
+                    trade_preferences,
+                    sizing_tags,
+                    gender_of_sizing,
+                    location,
+                    brand,
+                    condition,
+                    colour,
+                    article_tags,
+                    style_tags,
+                    pictures,
+                    listing_status,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                [
+                    userId,
+                    listingName,
+                    listingDescription || null,
+                    tradePreferences || null,
+                    sizingTags,
+                    genderOfSizing,
+                    location,
+                    brand || null,
+                    condition,
+                    colour || null,
+                    articleTags,
+                    styleTags || null,
+                    JSON.stringify(pictures),
+                    listingStatus || 'available'
+                ]
+            );
+
+            res.status(201).json({
+                message: 'Listing created successfully!',
+                listingId: result.lastID
+            });
+
+        } catch (error) {
+            console.error('Listing creation error:', error);
+            res.status(500).json({ 
+                error: 'Internal Server Error', 
+                details: error.message 
+            });
+        }
+    });
+
+    /**
+     * GET /api/listings/user/:userId
+     * Endpoint to get all listings for a specific user.
+     */
+    router.get('/listings/user/:userId', async (req, res) => {
+        const { userId } = req.params;
+
+        try {
+            const listings = await db.db.all(
+                'SELECT * FROM listings WHERE user_id = ? ORDER BY created_at DESC',
+                [userId]
+            );
+
+            // Parse pictures JSON for each listing
+            const parsedListings = listings.map(listing => ({
+                ...listing,
+                pictures: JSON.parse(listing.pictures || '[]')
+            }));
+
+            res.status(200).json({
+                listings: parsedListings,
+                count: parsedListings.length
+            });
+
+        } catch (error) {
+            console.error('Fetch listings error:', error);
+            res.status(500).json({ 
+                error: 'Internal Server Error', 
+                details: error.message 
+            });
+        }
+    });
+
     return router;
 };
